@@ -88,6 +88,12 @@ class InstructionQueue {
             // Initialize the queue
             InitializeQueue(filename, start_inst, inst_count, D_depth);
         }
+        ~InstructionQueue(){
+            for (Instruction* inst : InstructionQ){
+                delete inst;
+            }
+            InstructionQ.clear();
+        }
 
         // Print all InstructionQueue nodes (for debugging)
         void PrintInstructionQ(){

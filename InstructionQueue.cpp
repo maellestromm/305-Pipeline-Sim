@@ -42,13 +42,13 @@ void InstructionQueue::InitializeQueue(string filename, int start_inst, int inst
         // Assign first two column values (PC, InstType) to new Instruction object
         Instruction* inst = new Instruction;
         getline(s, word, ',');
-        inst->pc = stoull(word);     // pc = to_unsigned_int_64(column value 1)
+        inst->pc = strtoull(word.c_str(), nullptr, 16);     // pc = to_unsigned_int_64(column value 1)
         getline(s, word, ',');
         inst->type = static_cast<InstType>(stoi(word));   // type = to_enum(to_int(column value 2))
 
         // Read the remaining column values (PC dependences list)
         while(getline(s, word, ',')){
-            row.push_back(stoull(word));
+            row.push_back(strtoull(word.c_str(), nullptr, 16));
         }
         
         // Increment line counter
@@ -66,5 +66,5 @@ void InstructionQueue::InitializeQueue(string filename, int start_inst, int inst
     trace_file.close();
 
     // Debugging: print contents of InstructionQ
-    PrintInstructionQ();
+    //PrintInstructionQ();
 }
