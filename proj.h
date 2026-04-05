@@ -89,6 +89,18 @@ class InstructionQueue {
             InitializeQueue(filename, start_inst, inst_count, D_depth);
         }
 
+        // Print all InstructionQueue nodes (for debugging)
+        void PrintInstructionQ(){
+            for (const auto& node : InstructionQ){
+                printf("Inst #%lu: \tPC = %lu, \tInstType = %d, \tDependences = ",
+                    node->number, node->pc, node->type);
+                for (uint64_t d : node->dependences){
+                    printf("%lu, ", d);
+                }
+                printf("\n");
+            }
+        }
+
     private:
         // Initialize InstructionQueue by parsing through file line by line to create a queue of Instruction objects
         void InitializeQueue(string filename, int start_inst, int inst_count, int D_depth);
@@ -106,7 +118,7 @@ class EventQueue {
             Implement EventQueue()
         */
         // Constructor, initialize a new queue of events
-        EventQueue();
+        //EventQueue();
 
     private:
         queue<EventQueueNode*> EventQ;
@@ -128,13 +140,13 @@ class Simulation {
 
             // Initialize underlying queues
             InstructionQ = new InstructionQueue(filename, start_inst, inst_count, D_depth);
-            EventQ = new EventQueue();
+            //EventQ = new EventQueue();
 
         };
         // Destructor, free allocated memory for underlying queues
         ~Simulation() {
 			delete InstructionQ;
-			delete EventQ;
+			//delete EventQ;
 		};
 
         // Main simulator function

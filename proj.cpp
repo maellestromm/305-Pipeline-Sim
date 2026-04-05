@@ -19,13 +19,12 @@ int main(int argc, char* argv[]){
         }
 		
    		// If no input errors, initialize Simple Processor Pipeline Simulator
+        printf("Running Simple Processor Pipeline Simulator with trace file '%s', start_inst = %d, inst_count = %d, D_depth = %d\n\n", 
+            filename.c_str(), start_inst, inst_count, D_depth); 
    		Simulation* s = new Simulation(filename, start_inst, inst_count, D_depth);
 
    		// Start Simulation
-		printf("Running Simple Processor Pipeline Simulator with trace file '%s', start_inst = %d, inst_count = %d, D_depth = %d\n\n", filename, start_inst, inst_count, D_depth); 
-        // s->RunSimulation();
-		// int departure_count = s->GetDepartureCount();
-		// s->PrintStatistics(departure_count, print_period, lambda);
+        //s->RunSimulation();
 
 		delete s;
 		return 0;
