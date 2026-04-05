@@ -1,3 +1,16 @@
+# Compressed trace files
+compute_int_0.gz
+compute_fp_1.gz
+srv_0.gz
+
+# Decompressed trace files
+compute_int_0
+compute_fp_1
+srv_0
+
+# Executable "proj"
+proj
+
 # Prerequisites
 *.d
 
