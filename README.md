@@ -13,7 +13,7 @@
 
 # Next steps:
 1. Complete EventQueue implementation, looking to past homeworks for reference
-2. Implement Simulation class, should have Process[EventType]() functions for each event type (as in previous assignments)
+2. Implement Simulation class, should have Process(EventType)() functions for each event type (as in previous assignments)
 3. Implement core RunSimulation() function, schedule the first two (superscalar processor width = 2) IF events 
 4. Implement dependency handling, from initial research perhaps a std::unordered_map data type could be useful here?
 5. Complete D=1 functionality with time tracking
