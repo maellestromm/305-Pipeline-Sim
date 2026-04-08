@@ -6,6 +6,8 @@
 #include<string>
 #include <filesystem>
 #include<cstdint>
+#include<cinttypes>
+#include<unordered_map>
 #include<vector>
 #include<deque>
 #include<queue>
@@ -98,13 +100,28 @@ class InstructionQueue {
         // Print all InstructionQueue nodes (for debugging)
         void PrintInstructionQ(){
             for (const auto& node : InstructionQ){
-                printf("Inst #%lu: \tPC = %lu, \tInstType = %d, \tDependences = ",
+                printf("Inst #" PRIu64 ": \tPC = " PRIu64 ", \tInstType = %d, \tDependences = ",
                     node->number, node->pc, node->type);
                 for (uint64_t d : node->dependences){
-                    printf("%lu, ", d);
+                    printf("" PRIu64 ", ", d);
                 }
                 printf("\n");
             }
+        }
+
+        // Check if there are more instructions in the queue
+        bool HasNext(){
+            return !InstructionQ.empty();
+        }
+
+        // Get the next instruction in the queue and remove it from the queue
+        Instruction* GetNext(){
+            if (InstructionQ.empty()){
+                return nullptr;
+            }
+            Instruction* next_inst = InstructionQ.front();
+            InstructionQ.pop_front();
+            return next_inst;
         }
 
     private:
@@ -161,7 +178,7 @@ class Simulation {
     private:
         // Underlying queues
         InstructionQueue* InstructionQ;
-        EventQueue* EventQ;
+        [[maybe_unused]] EventQueue* EventQ;
 
         // Input parameters
         string filename;
