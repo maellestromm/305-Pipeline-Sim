@@ -8,56 +8,66 @@
 //    - EX: move to MEM (structural hazard: load/store MEM conflicts)
 //    - ID: move to EX (data hazard: dependency check, structural hazard: EX conflicts, control hazard: branch triggers fetch stall)
 //    - IF: move to ID
-//    - Fetch: bring new instructions if not stalled by a branch
+//    - Fetch: get new instructions if not stalled by a branch
 // 3. Print total cycles, time in ms, and instruction mix
 void Simulation::RunSimulation()
-{
+{	
+	/* Initialize simulation variables */
 	int cycle = 0; // Track the current cycle number
-	int finished_inst = 0; // Track how many instructions have finished processing
-	int histogram[5] = {0, 0, 0, 0, 0}; // For counting the number of each instruction type (INT, FP, BRANCH, LOAD, STORE)A
+	int retired_inst = 0; // Track how many instructions have been retired
+	int histogram[5] = {0, 0, 0, 0, 0}; // For counting the number of each instruction type (INT, FP, BRANCH, LOAD, STORE)
 
 	int EX_cycles_left[2] = {0, 0}; // For tracking how many cycles are left for instructions in EX stage (for D=2/3/4)
+	int MEM_cycles_left[2] = {0, 0}; // For tracking how many cycles are left for instructions in MEM stage (for D=3/4)
 
+	// For tracking instructions in each pipeline stage
 	Instruction *IF[2] = {nullptr, nullptr};
 	Instruction *ID[2] = {nullptr, nullptr};
 	Instruction *EX[2] = {nullptr, nullptr};
 	Instruction *MEM[2] = {nullptr, nullptr};
 	Instruction *WB[2] = {nullptr, nullptr};
 
-	unordered_map<uint64_t, uint64_t> last_done_cycle; // For each PC, the cycle when the last instance became ready
+	unordered_map<uint64_t, uint64_t> last_done_cycle; // For tracking the last cycle when an instruction with a given PC completed
 	bool stall_fetch = false;						   // Whether to stall fetch in the current cycle
 	bool stall_fetch_next = false;					   // Whether to stall fetch in the next cycle
 
-	// While there are still instructions that haven't finished processing, continue the simulation cycle by cycle
-	while (finished_inst < inst_count)
+	// While there are still instructions that haven't finished processing, continue the simulation
+	while (retired_inst < inst_count)
 	{
 		cycle++;
 
 		// Check for instructions that have completed the WB stage in the current cycle
-		// Update finished_inst and histogram counts, and free up WB stage
 		for (int i = 0; i < 2; i++)
 		{
+			// Update finished_inst and histogram counts, and free up WB stage
 			if (WB[i])
 			{
-				finished_inst++;
+				retired_inst++;
 				histogram[WB[i]->type]++;
 				WB[i] = nullptr;
 			}
 		}
 
-		// Move instructions in MEM stage to WB stage if possible
-		if (!WB[0] && MEM[0])
+		/* MEM -> WB: Move instructions in MEM stage to WB stage if possible */
+
+		// Check if MEM[0] can move to WB stage (only if WB[0] is empty, MEM[0] has an instruction, and MEM[0] has finished any required MEM cycles)
+		if (!WB[0] && MEM[0] && MEM_cycles_left[0] == 0)
 		{
 			WB[0] = MEM[0];
+
+			// If instruction is a load/store, update last_done_cycle for that PC to the current cycle
 			if (WB[0]->type == LOAD || WB[0]->type == STORE)
 			{
 				last_done_cycle[WB[0]->pc] = cycle;
 			}
 			MEM[0] = nullptr;
 		}
-		if (!WB[1] && MEM[1])
+		// Check if MEM[1] can move to WB stage (only if WB[1] is empty, MEM[1] has an instruction, MEM[1] has finished any required MEM cycles, and MEM[0] is not moving to WB in the same cycle)
+		if (!WB[1] && MEM[1] && MEM_cycles_left[1] == 0 && !MEM[0])
 		{
 			WB[1] = MEM[1];
+
+			// If instruction is a load/store, update last_done_cycle for that PC to the current cycle
 			if (WB[1]->type == LOAD || WB[1]->type == STORE)
 			{
 				last_done_cycle[WB[1]->pc] = cycle;
@@ -65,20 +75,32 @@ void Simulation::RunSimulation()
 			MEM[1] = nullptr;
 		}
 
-		// Move instructions in EX stage to MEM stage if possible
+		/* EX -> MEM: Move instructions in EX stage to MEM stage if possible */
 		for (int i = 0; i < 2; i++){
+
+			// Decrement EX and MEM cycles left for instructions currently in those stages
 			if (EX[i] && EX_cycles_left[i] > 0)
 			{
 				EX_cycles_left[i]--;
 			}
+			if(MEM[i] && MEM_cycles_left[i] > 0){
+				MEM_cycles_left[i]--;
+			}
 		}
-		bool mem_has_load = (MEM[0] && MEM[0]->type == LOAD) || (MEM[1] && MEM[1]->type == LOAD);
-		bool mem_has_store = (MEM[0] && MEM[0]->type == STORE) || (MEM[1] && MEM[1]->type == STORE);
+
+		bool mem_has_load = (MEM[0] && MEM[0]->type == LOAD) || (MEM[1] && MEM[1]->type == LOAD); // Whether there is a load instruction in MEM stage currently
+		bool mem_has_store = (MEM[0] && MEM[0]->type == STORE) || (MEM[1] && MEM[1]->type == STORE); // Whether there is a store instruction in MEM stage currently
+
 		if (EX[0])
 		{
-			bool has_space = !MEM[0] || !MEM[1];
-			bool can_move = has_space;
-			
+			bool has_space = !MEM[0] || !MEM[1]; // Whether there is space in MEM stage
+			bool can_move = has_space; // Whether the instruction in EX[0] can move to MEM stage
+
+			// Stall until EX finishes
+			if(EX_cycles_left[0] > 0){
+				can_move = false;
+			}
+
 			// Structural hazard check: MEM can only accept one load and one store per cycle
 			if (EX[0]->type == LOAD && mem_has_load)
 			{
@@ -94,9 +116,14 @@ void Simulation::RunSimulation()
 			{
 				if(!MEM[0]){
 					MEM[0] = EX[0];
+					int mem_cycles = (EX[0]->type == LOAD && (D_depth == 3 || D_depth == 4)) ? 3 : 1; // For D=3/4, LOAD instructions take 3 cycles in MEM stage
+					MEM_cycles_left[0] = mem_cycles;
 				}else{
 					MEM[1] = EX[0];
+					int mem_cycles = (EX[0]->type == LOAD && (D_depth == 3 || D_depth == 4)) ? 3 : 1; // For D=3/4, LOAD instructions take 3 cycles in MEM stage
+					MEM_cycles_left[1] = mem_cycles;
 				}
+
 				if(EX[0]->type == LOAD){
 					mem_has_load = true;
 				}else if(EX[0]->type == STORE){
@@ -104,11 +131,18 @@ void Simulation::RunSimulation()
 				}else{
 					last_done_cycle[EX[0]->pc] = cycle;
 				}
+
 				EX[0] = nullptr;
 			}
+
 			if(EX[1]){
 				has_space = !MEM[0] || !MEM[1];
 				can_move = has_space;
+
+				// Stall until EX finishes
+				if(EX_cycles_left[1] > 0){
+					can_move = false;
+				}
 
 				// Structural hazard check: MEM can only accept one load and one store per cycle
 				if (EX[1]->type == LOAD && mem_has_load){
@@ -117,12 +151,19 @@ void Simulation::RunSimulation()
 				else if (EX[1]->type == STORE && mem_has_store){
 					can_move = false;
 				}
+
+				// If instruction can move to MEM stage, update mem_has_load and mem_has_store
 				if(can_move){
 					if(!MEM[0]){
 						MEM[0] = EX[1];
+						int mem_cycles = (EX[1]->type == LOAD && (D_depth == 3 || D_depth == 4)) ? 3 : 1; // For D=3/4, LOAD instructions take 3 cycles in MEM stage
+						MEM_cycles_left[0] = mem_cycles;
 					}else{
 						MEM[1] = EX[1];
+						int mem_cycles = (EX[1]->type == LOAD && (D_depth == 3 || D_depth == 4)) ? 3 : 1; // For D=3/4, LOAD instructions take 3 cycles in MEM stage
+						MEM_cycles_left[1] = mem_cycles;
 					}
+
 					if(EX[1]->type == LOAD){
 						mem_has_load = true;
 					}else if(EX[1]->type == STORE){
@@ -130,6 +171,7 @@ void Simulation::RunSimulation()
 					}else{
 						last_done_cycle[EX[1]->pc] = cycle;
 					}
+
 					EX[1] = nullptr;
 				}
 			}
@@ -137,8 +179,13 @@ void Simulation::RunSimulation()
 
 		// If EX[0] is empty, allow EX[1] to move
 		if(!EX[0] && EX[1]){
-			bool has_space = !MEM[0] || !MEM[1];
-			bool can_move = has_space;
+			bool has_space = !MEM[0] || !MEM[1]; // Whether there is space in MEM stage
+			bool can_move = has_space; // Whether the instruction in EX[1] can move to MEM stage
+
+			// Stall until EX finishes
+			if(EX_cycles_left[1] > 0){
+				can_move = false;
+			}
 
 			// Structural hazard check: MEM can only accept one load and one store per cycle
 			if(EX[1]->type == LOAD && mem_has_load){
@@ -147,12 +194,19 @@ void Simulation::RunSimulation()
 			else if (EX[1]->type == STORE && mem_has_store){
 				can_move = false;
 			}
+
+			// If instruction can move to MEM stage, update mem_has_load and mem_has_store
 			if(can_move){
 				if(!MEM[0]){
 					MEM[0] = EX[1];
+					int mem_cycles = (EX[1]->type == LOAD && (D_depth == 3 || D_depth == 4)) ? 3 : 1; // For D=3/4, LOAD instructions take 3 cycles in MEM stage
+					MEM_cycles_left[0] = mem_cycles;
 				}else{
 					MEM[1] = EX[1];
+					int mem_cycles = (EX[1]->type == LOAD && (D_depth == 3 || D_depth == 4)) ? 3 : 1; // For D=3/4, LOAD instructions take 3 cycles in MEM stage
+					MEM_cycles_left[1] = mem_cycles;
 				}
+
 				if(EX[1]->type == LOAD){
 					mem_has_load = true;
 				}else if(EX[1]->type == STORE){
@@ -160,21 +214,24 @@ void Simulation::RunSimulation()
 				}else{
 					last_done_cycle[EX[1]->pc] = cycle;
 				}
+
 				EX[1] = nullptr;
 			}
 		}
 
-		// Move instructions in ID stage to EX stage if possible
-		bool ex_has_int = (EX[0] && EX[0]->type == INT) || (EX[1] && EX[1]->type == INT);
-		bool ex_has_fp = (EX[0] && EX[0]->type == FP) || (EX[1] && EX[1]->type == FP);
-		bool ex_has_branch = (EX[0] && EX[0]->type == BRANCH) || (EX[1] && EX[1]->type == BRANCH);
+		/* ID -> EX: Move instructions in ID stage to EX stage if possible */
+		bool ex_has_int = (EX[0] && EX[0]->type == INT) || (EX[1] && EX[1]->type == INT); // Whether there is an integer instruction in EX stage currently
+		bool ex_has_fp = (EX[0] && EX[0]->type == FP) || (EX[1] && EX[1]->type == FP); // Whether there is a floating point instruction in EX stage currently
+		bool ex_has_branch = (EX[0] && EX[0]->type == BRANCH) || (EX[1] && EX[1]->type == BRANCH); // Whether there is a branch instruction in EX stage currently
 
 		if(ID[0]){
-			bool dependencies_satisfied = true;
+			bool dependencies_satisfied = true; // Whether all data dependencies have been satisfied
 
 			// Data hazard check: wait for producers to complete before issuing to EX
 			for(uint64_t dependency_pc : ID[0]->dependences){
+				// Look up the last cycle that an instruction with this dependency_pc completed in last_done_cycle
 				unordered_map<uint64_t, uint64_t>::iterator it = last_done_cycle.find(dependency_pc);
+				// If the producer hasn't completed by this cycle, the dependency isn't ready yet
 				if(it != last_done_cycle.end()){
 					if (it->second > cycle)
 					{
@@ -194,8 +251,8 @@ void Simulation::RunSimulation()
 				no_structural_hazard = false;
 			}
 
-			// Check if there is space in EX stage and move instruction from ID to EX if possible
-			bool has_space = !EX[0] || !EX[1];
+			bool has_space = !EX[0] || !EX[1]; // Whether there is space in EX stage
+			// Move instruction from ID to EX if all dependencies are satisfied, there are no structural hazards, and there is space in EX stage
 			if(dependencies_satisfied && no_structural_hazard && has_space){
 				if(!EX[0]){
 					EX[0] = ID[0];
@@ -211,7 +268,7 @@ void Simulation::RunSimulation()
 					EX_cycles_left[1] = ex_cycles;
 				}
 
-
+				// Update ex_has_int, ex_has_fp, and ex_has_branch based on the instruction type
 				if(ID[0]->type == INT){
 					ex_has_int = true;
 				}else if(ID[0]->type == FP){
@@ -230,7 +287,9 @@ void Simulation::RunSimulation()
 
 					// Data hazard check: wait for producers to complete before issuing to EX
 					for(uint64_t dependency_pc : ID[1]->dependences){
+						// Look up the last cycle that an instruction with this dependency_pc completed in last_done_cycle
 						unordered_map<uint64_t, uint64_t>::iterator it = last_done_cycle.find(dependency_pc);
+						// If the producer hasn't completed by this cycle, the dependency isn't ready yet
 						if(it != last_done_cycle.end()){
 							if (it->second > cycle)
 							{
@@ -272,17 +331,18 @@ void Simulation::RunSimulation()
 			}
 		}
 
-		// Move instructions in IF stage to ID stage if possible
+		/* IF -> ID: Move instructions in IF stage to ID stage if possible */
 		if(!ID[0] && IF[0]){
 			ID[0] = IF[0];
 			IF[0] = nullptr;
+
 			if(!ID[1] && IF[1]){
 				ID[1] = IF[1];
 				IF[1] = nullptr;
 			}
 		}
 
-		// Fetch new instructions into IF stage if not stalled
+		/* Fetch: Fetch new instructions into IF stage if not stalled */
 		if (!stall_fetch){
 			if(!IF[0] && InstructionQ->HasNext()){
 				IF[0] = InstructionQ->GetNext();
@@ -298,7 +358,7 @@ void Simulation::RunSimulation()
 		stall_fetch_next = false;
 	}
 
-	// == Print total cycles and execution time in ms ==
+	/* Print total cycles and execution time in ms */
 
 	// Pick the clock speed based on D
 	const double clock_ghz = (D_depth == 1) ? 1.0 : (D_depth == 2) ? 1.2 : (D_depth == 3) ? 1.7 : 1.8;
@@ -313,14 +373,14 @@ void Simulation::RunSimulation()
 	printf("Execution time: %.6f ms\n", total_time_ms);
 
 	// Print instruction mix
-	if (finished_inst > 0)
+	if (retired_inst > 0)
 	{
 		printf("Histogram (%%): int=%.2f, fp=%.2f, branch=%.2f, load=%.2f, store=%.2f\n",
-			   100.0 * histogram[INT] / finished_inst,
-			   100.0 * histogram[FP] / finished_inst,
-			   100.0 * histogram[BRANCH] / finished_inst,
-			   100.0 * histogram[LOAD] / finished_inst,
-			   100.0 * histogram[STORE] / finished_inst);
+			   100.0 * histogram[INT] / retired_inst,
+			   100.0 * histogram[FP] / retired_inst,
+			   100.0 * histogram[BRANCH] / retired_inst,
+			   100.0 * histogram[LOAD] / retired_inst,
+			   100.0 * histogram[STORE] / retired_inst);
 	}
 }
 
