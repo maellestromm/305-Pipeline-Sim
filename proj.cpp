@@ -2,19 +2,21 @@
 
 // Overall flow:
 // 1. Read the trace into the instruction queue
-// 2. Run cycle by cycle until all instructions retire
+// 2. Run cycle by cycle until all instructions finish
 //    - WB: retire + histogram update
 //    - MEM: move to WB
-//    - EX: move to MEM (check load/store structural hazards)
-//    - ID: move to EX (check dependencies + EX unit conflicts)
+//    - EX: move to MEM (structural hazard: load/store MEM conflicts)
+//    - ID: move to EX (data hazard: dependency check, structural hazard: EX conflicts, control hazard: branch triggers fetch stall)
 //    - IF: move to ID
 //    - Fetch: bring new instructions if not stalled by a branch
 // 3. Print total cycles, time in ms, and instruction mix
 void Simulation::RunSimulation()
 {
-	int cycle = 0;
-	int finished_inst = 0;
-	int histogram[5] = {0, 0, 0, 0, 0};
+	int cycle = 0; // Track the current cycle number
+	int finished_inst = 0; // Track how many instructions have finished processing
+	int histogram[5] = {0, 0, 0, 0, 0}; // For counting the number of each instruction type (INT, FP, BRANCH, LOAD, STORE)A
+
+	int EX_cycles_left[2] = {0, 0}; // For tracking how many cycles are left for instructions in EX stage (for D=2/3/4)
 
 	Instruction *IF[2] = {nullptr, nullptr};
 	Instruction *ID[2] = {nullptr, nullptr};
@@ -64,12 +66,20 @@ void Simulation::RunSimulation()
 		}
 
 		// Move instructions in EX stage to MEM stage if possible
+		for (int i = 0; i < 2; i++){
+			if (EX[i] && EX_cycles_left[i] > 0)
+			{
+				EX_cycles_left[i]--;
+			}
+		}
 		bool mem_has_load = (MEM[0] && MEM[0]->type == LOAD) || (MEM[1] && MEM[1]->type == LOAD);
 		bool mem_has_store = (MEM[0] && MEM[0]->type == STORE) || (MEM[1] && MEM[1]->type == STORE);
 		if (EX[0])
 		{
 			bool has_space = !MEM[0] || !MEM[1];
 			bool can_move = has_space;
+			
+			// Structural hazard check: MEM can only accept one load and one store per cycle
 			if (EX[0]->type == LOAD && mem_has_load)
 			{
 				can_move = false;
@@ -78,6 +88,7 @@ void Simulation::RunSimulation()
 			{
 				can_move = false;
 			}
+
 			// If instruction can move to MEM stage, update mem_has_load and mem_has_store
 			if (can_move)
 			{
@@ -98,6 +109,8 @@ void Simulation::RunSimulation()
 			if(EX[1]){
 				has_space = !MEM[0] || !MEM[1];
 				can_move = has_space;
+
+				// Structural hazard check: MEM can only accept one load and one store per cycle
 				if (EX[1]->type == LOAD && mem_has_load){
 					can_move = false;
 				}
@@ -127,6 +140,7 @@ void Simulation::RunSimulation()
 			bool has_space = !MEM[0] || !MEM[1];
 			bool can_move = has_space;
 
+			// Structural hazard check: MEM can only accept one load and one store per cycle
 			if(EX[1]->type == LOAD && mem_has_load){
 				can_move = false;
 			}
@@ -157,7 +171,8 @@ void Simulation::RunSimulation()
 
 		if(ID[0]){
 			bool dependencies_satisfied = true;
-			// Check if all dependencies of the instruction in ID[0] have completed their MEM stage
+
+			// Data hazard check: wait for producers to complete before issuing to EX
 			for(uint64_t dependency_pc : ID[0]->dependences){
 				unordered_map<uint64_t, uint64_t>::iterator it = last_done_cycle.find(dependency_pc);
 				if(it != last_done_cycle.end()){
@@ -168,7 +183,8 @@ void Simulation::RunSimulation()
 					}
 				}
 			}
-			// Check for structural hazards in EX stage based on instruction type
+
+			// Structural hazard check: only one of each EX unit type can be active
 			bool no_structural_hazard = true;
 			if(ID[0]->type == INT && ex_has_int){
 				no_structural_hazard = false;
@@ -186,12 +202,23 @@ void Simulation::RunSimulation()
 				}else{
 					EX[1] = ID[0];
 				}
+				
+				// For D=2/3/4, set the number of cycles needed in EX stage if the instruction is FP
+				int ex_cycles = (ID[0]->type == FP && (D_depth == 2 || D_depth == 4) ? 2 : 1); // For D=2/4, FP instructions take 2 cycles in EX stage
+				if(!EX[0]){
+					EX_cycles_left[0] = ex_cycles;
+				}else{
+					EX_cycles_left[1] = ex_cycles;
+				}
+
+
 				if(ID[0]->type == INT){
 					ex_has_int = true;
 				}else if(ID[0]->type == FP){
 					ex_has_fp = true;
 				}else if(ID[0]->type == BRANCH){
 					ex_has_branch = true;
+					// Control hazard: stall fetch in the next cycle after issuing a branch
 					stall_fetch_next = true;
 				}
 
@@ -200,7 +227,8 @@ void Simulation::RunSimulation()
 				// If ID[0] moved, try to process ID[1] in the same cycle
 				if(ID[1]){
 					dependencies_satisfied = true;
-					// Check if all dependencies of the instruction in ID[1] have completed their MEM stage
+
+					// Data hazard check: wait for producers to complete before issuing to EX
 					for(uint64_t dependency_pc : ID[1]->dependences){
 						unordered_map<uint64_t, uint64_t>::iterator it = last_done_cycle.find(dependency_pc);
 						if(it != last_done_cycle.end()){
@@ -212,7 +240,7 @@ void Simulation::RunSimulation()
 						}
 					}
 
-					// Check for structural hazards in EX stage based on instruction type
+					// Structural hazard check: only one of each EX unit type can be active
 					no_structural_hazard = true;
 					if(ID[1]->type == INT && ex_has_int){
 						no_structural_hazard = false;
@@ -227,9 +255,13 @@ void Simulation::RunSimulation()
 					if(dependencies_satisfied && no_structural_hazard && has_space){
 						if(!EX[0]){
 							EX[0] = ID[1];
+							EX_cycles_left[0] = ex_cycles;
 						}else{
 							EX[1] = ID[1];
+							EX_cycles_left[1] = ex_cycles;
 						}
+
+						// Control hazard: stall fetch in the next cycle after issuing a branch
 						if(ID[1]->type == BRANCH){
 							stall_fetch_next = true;
 						}
@@ -244,7 +276,6 @@ void Simulation::RunSimulation()
 		if(!ID[0] && IF[0]){
 			ID[0] = IF[0];
 			IF[0] = nullptr;
-
 			if(!ID[1] && IF[1]){
 				ID[1] = IF[1];
 				IF[1] = nullptr;
@@ -266,6 +297,8 @@ void Simulation::RunSimulation()
 		stall_fetch = stall_fetch_next;
 		stall_fetch_next = false;
 	}
+
+	// == Print total cycles and execution time in ms ==
 
 	// Pick the clock speed based on D
 	const double clock_ghz = (D_depth == 1) ? 1.0 : (D_depth == 2) ? 1.2 : (D_depth == 3) ? 1.7 : 1.8;
