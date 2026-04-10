@@ -30,3 +30,13 @@
 - The sim prints total cycles, execution time (ms), and the instruction mix.
 - Main() now runs the simulation.
 - For now, only D=1 behavior is supported (D=2/3/4 still need the extra EX/MEM stages).
+
+# 4/9 update
+
+- Added multi-cycle EX behavior for FP instructions in D=2/4.
+- Added multi-cycle MEM behavior for load instructions in D=3/4.
+- Enforced in-order MEM retirement.
+- Added more comments (especially to explain the hazard checks).
+
+
+
