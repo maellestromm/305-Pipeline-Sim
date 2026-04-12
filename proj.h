@@ -1,17 +1,12 @@
-#include<stdio.h>
-#include<time.h>
-#include<math.h>
-#include<stdlib.h>
-#include<unistd.h>
-#include<string>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string>
 #include <filesystem>
-#include<cstdint>
-#include<cinttypes>
-#include<unordered_map>
-#include<vector>
-#include<deque>
-#include<queue>
-#include<fstream>
+#include <cstdint>
+#include <cinttypes>
+#include <unordered_map>
+#include <vector>
+#include <deque>
 using namespace std;
 
 /*
@@ -19,21 +14,23 @@ using namespace std;
 */
 
 // Instruction type: A value between 1 and 5
-enum InstType { 
-    INT,        // Integer instruction: An instruction that uses the integer ALU
-    FP,         // Floating point instruction: An instruction that uses the floating point unit
-    BRANCH,     // Branch: An instruction that transfers control to the next instruction in the trace.
-    LOAD,       // Load: An instruction that reads a value from memory.
-    STORE       // Store: An instruction that writes a value to memory.
+enum InstType
+{
+    INT,    // Integer instruction: An instruction that uses the integer ALU
+    FP,     // Floating point instruction: An instruction that uses the floating point unit
+    BRANCH, // Branch: An instruction that transfers control to the next instruction in the trace.
+    LOAD,   // Load: An instruction that reads a value from memory.
+    STORE   // Store: An instruction that writes a value to memory.
 };
 // Instruction processing stage: A value between 1 and 6 (including Done)
-enum Stage { 
-    IF,         // Instruction fetch (IF)
-    ID,         // Instruction decode and read operands (ID)
-    EX,         // Issue and Execute (EX)
-    MEM,        // Memory read/write for load/store instructions (MEM)
-    WB,         // Write back results to registers and Retire (WB)
-    DONE        // Instruction completed
+enum Stage
+{
+    IF,  // Instruction fetch (IF)
+    ID,  // Instruction decode and read operands (ID)
+    EX,  // Issue and Execute (EX)
+    MEM, // Memory read/write for load/store instructions (MEM)
+    WB,  // Write back results to registers and Retire (WB)
+    DONE // Instruction completed
 };
 
 /*
@@ -43,13 +40,14 @@ enum Stage {
 // Each line of the trace represents an instruction with comma separated values representing the following:
 // 1. Instruction program counter (PC): A hexadecimal value representing the instruction address.
 // 2. Instruction type: A value between 1 and 5
-// 3. A list of PC values for instructions that the current instruction depends on. 
-//    - Some instructions don’t have any dependences, so this list will be empty. 
-//    - Other instructions depend on 1-4 other instructions. 
-//    Note that PC values correspond to static instructions, and the trace could have multiple dynamic 
-//    instructions with the same PC value. For dependences, an instruction is dependent on the last instance 
-//    of the dynamic instruction with that PC value. 
-struct Instruction {
+// 3. A list of PC values for instructions that the current instruction depends on.
+//    - Some instructions don’t have any dependences, so this list will be empty.
+//    - Other instructions depend on 1-4 other instructions.
+//    Note that PC values correspond to static instructions, and the trace could have multiple dynamic
+//    instructions with the same PC value. For dependences, an instruction is dependent on the last instance
+//    of the dynamic instruction with that PC value.
+struct Instruction
+{
     // 1. Instruction program counter (PC)
     uint64_t pc;
 
@@ -63,126 +61,125 @@ struct Instruction {
     uint64_t number;
 };
 
-// Definition of a Queue Node in the Event Queue
-struct EventQueueNode {
-    double event_time;              // Event start time
-    Stage stage;                    // Current stage of instruction processing
-    Instruction* qnode;             // Pointer to corresponding instruction in the InstructionQueue
-    struct EventQueueNode *next;    // Pointer to next event
-};
-
 /*
     Class definitions:
 */
 
 // Class defining a queue of instructions read from the selected trace file
-class InstructionQueue {
-    public:
+class InstructionQueue
+{
+public:
+    /* TODO:
+        Properly implement "initialize a new InstructionQueue by parsing through file"
+    */
+    // Constructor, create and return a new InstructionQueue
+    InstructionQueue(string filename, int start_inst, int inst_count, int D_depth)
+    {
 
-        /* TODO:
-            Properly implement "initialize a new InstructionQueue by parsing through file"
-        */
-        // Constructor, create and return a new InstructionQueue
-        InstructionQueue(string filename, int start_inst, int inst_count, int D_depth){
-            
-            // ? Initialize any variables tracked in this queue
+        // ? Initialize any variables tracked in this queue
 
-            // Initialize the queue
-            InitializeQueue(filename, start_inst, inst_count, D_depth);
+        // Initialize the queue
+        InitializeQueue(filename, start_inst, inst_count, D_depth);
+    }
+    ~InstructionQueue()
+    {
+        for (Instruction *inst : InstructionQ)
+        {
+            delete inst;
         }
-        ~InstructionQueue(){
-            for (Instruction* inst : InstructionQ){
-                delete inst;
+        InstructionQ.clear();
+    }
+
+    // Print all InstructionQueue nodes (for debugging)
+    void PrintInstructionQ()
+    {
+        for (const auto &node : InstructionQ)
+        {
+            printf("Inst #%" PRIu64 ": \tPC = %" PRIu64 ", \tInstType = %d, \tDependences = ",
+                   node->number, node->pc, node->type);
+            for (uint64_t d : node->dependences)
+            {
+                printf("%" PRIu64 ", ", d);
             }
-            InstructionQ.clear();
+            printf("\n");
         }
+    }
 
-        // Print all InstructionQueue nodes (for debugging)
-        void PrintInstructionQ(){
-            for (const auto& node : InstructionQ){
-                printf("Inst #" PRIu64 ": \tPC = " PRIu64 ", \tInstType = %d, \tDependences = ",
-                    node->number, node->pc, node->type);
-                for (uint64_t d : node->dependences){
-                    printf("" PRIu64 ", ", d);
-                }
-                printf("\n");
-            }
+    // Check if there are more instructions in the queue
+    bool HasNext()
+    {
+        return !InstructionQ.empty();
+    }
+
+    // Get the next instruction in the queue and remove it from the queue
+    Instruction *GetNext()
+    {
+        if (InstructionQ.empty())
+        {
+            return nullptr;
         }
+        Instruction *next_inst = InstructionQ.front();
+        InstructionQ.pop_front();
+        return next_inst;
+    }
 
-        // Check if there are more instructions in the queue
-        bool HasNext(){
-            return !InstructionQ.empty();
-        }
+private:
+    // Initialize InstructionQueue by parsing through file line by line to create a queue of Instruction objects
+    void InitializeQueue(string filename, int start_inst, int inst_count, int D_depth);
 
-        // Get the next instruction in the queue and remove it from the queue
-        Instruction* GetNext(){
-            if (InstructionQ.empty()){
-                return nullptr;
-            }
-            Instruction* next_inst = InstructionQ.front();
-            InstructionQ.pop_front();
-            return next_inst;
-        }
+    deque<Instruction *> InstructionQ;
 
-    private:
-        // Initialize InstructionQueue by parsing through file line by line to create a queue of Instruction objects
-        void InitializeQueue(string filename, int start_inst, int inst_count, int D_depth);
-
-        deque<Instruction*> InstructionQ;
-
-        // ?? Any variables tracked in this queue
+    // ?? Any variables tracked in this queue
 };
-
-// Event Queue for events that have been scheduled
-class EventQueue {
-    public:
-
-        /* TODO:
-            Implement EventQueue()
-        */
-        // Constructor, initialize a new queue of events
-        //EventQueue();
-
-    private:
-        queue<EventQueueNode*> EventQ;
-};
-
 
 // Class defining, initializing, and running a Simple Processor Pipeline Simulator
-class Simulation {
-    public:
+class Simulation
+{
+public:
+    // Constructor, initializes a new Simple Processor Pipeline Simulator using provided parameters
+    Simulation(string filename_in, int start_inst_in, int inst_count_in, int D_depth_in)
+    {
 
-        // Constructor, initializes a new Simple Processor Pipeline Simulator using provided parameters
-        Simulation(string filename_in, int start_inst_in, int inst_count_in, int D_depth_in){
+        // Store parameters
+        filename = filename_in;
+        start_inst = start_inst_in;
+        inst_count = inst_count_in;
+        D_depth = D_depth_in;
 
-            // Store parameters
-            filename = filename_in;
-            start_inst = start_inst_in;
-            inst_count = inst_count_in;
-            D_depth = D_depth_in;
+        // Initialize underlying queues
+        InstructionQ = new InstructionQueue(filename, start_inst, inst_count, D_depth);
+    };
+    // Destructor, free allocated memory for underlying queues
+    ~Simulation()
+    {
+        delete InstructionQ;
+    };
 
-            // Initialize underlying queues
-            InstructionQ = new InstructionQueue(filename, start_inst, inst_count, D_depth);
-            //EventQ = new EventQueue();
+    // Main simulator function
+    void RunSimulation();
 
-        };
-        // Destructor, free allocated memory for underlying queues
-        ~Simulation() {
-			delete InstructionQ;
-			//delete EventQ;
-		};
+    // Move instructions from IF to ID stage if possible, and fetch new instructions into IF stage if not stalled
+    void ProcessIF(Instruction *(&IF)[2], Instruction *(&ID)[2],InstructionQueue *InstructionQ,bool &stall_fetch, bool &stall_fetch_next);
 
-        // Main simulator function
-        void RunSimulation();
+    // Move instructions from ID to EX stage if possible, and update stall_fetch_next for the next cycle based on dependences
+    void ProcessID(Instruction* (&ID)[2], Instruction* (&EX)[2], int (&EX_cycles_left)[2], int cycle, int D_depth, unordered_map<uint64_t, uint64_t>& last_done_cycle, bool& stall_fetch_next);
 
-    private:
-        // Underlying queues
-        InstructionQueue* InstructionQ;
-        [[maybe_unused]] EventQueue* EventQ;
+    // Move instructions from EX to MEM stage if possible, and update EX_cycles_left and MEM_cycles_left for the next cycle based on D and instruction type
+    void ProcessEX(Instruction* (&EX)[2], Instruction* (&MEM)[2], int (&EX_cycles_left)[2], int (&MEM_cycles_left)[2], int cycle, int D_depth, unordered_map<uint64_t, uint64_t>& last_done_cycle);
 
-        // Input parameters
-        string filename;
-        int start_inst;
-        int inst_count;
-        int D_depth;
+    // Move instructions from MEM to WB stage if possible
+    void ProcessMEM(Instruction* (&MEM)[2], Instruction* (&WB)[2], int (&MEM_cycles_left)[2], unordered_map<uint64_t, uint64_t>& last_done_cycle, int cycle);
+
+    // Move instructions from WB to Done stage, and update retired_inst and histogram counts for the next cycle
+    void ProcessWB(Instruction* (&WB)[2], int& retired_inst, int (&histogram)[5]);
+
+private:
+    // Underlying queues
+    InstructionQueue *InstructionQ;
+
+    // Input parameters
+    string filename;
+    int start_inst;
+    int inst_count;
+    int D_depth;
 };

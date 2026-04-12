@@ -1,4 +1,6 @@
-#include"proj.h"
+#include "proj.h"
+#include <fstream>
+#include <sstream>
 
 /* TODO:
     Properly implement "initialize a new InstructionQueue by parsing through file"
