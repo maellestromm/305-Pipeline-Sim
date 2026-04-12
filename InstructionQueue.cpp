@@ -51,7 +51,8 @@ void InstructionQueue::InitializeQueue(string filename, int start_inst, int inst
         getline(s, word, ',');
         inst->pc = strtoull(word.c_str(), nullptr, 16); // pc = to_unsigned_int_64(column value 1)
         getline(s, word, ',');
-        inst->type = static_cast<InstType>(stoi(word)); // type = to_enum(to_int(column value 2))
+        // Trace type is 1-5, enum is 0-4, so subtract 1
+        inst->type = static_cast<InstType>(stoi(word) - 1); // type = to_enum(to_int(column value 2) - 1)
 
         // Read the remaining column values (PC dependences list)
         while (getline(s, word, ','))
