@@ -33,6 +33,9 @@ enum Stage
     DONE // Instruction completed
 };
 
+// Global variable to hold the actual number of instructions loaded
+extern int actual_inst_count;
+
 /*
     Data structure definitions:
 */
@@ -148,6 +151,12 @@ public:
 
         // Initialize underlying queues
         InstructionQ = new InstructionQueue(filename, start_inst, inst_count, D_depth);
+
+        // Simulate only the instructions that were actually loaded from the trace
+        if (actual_inst_count < inst_count)
+        {
+            inst_count = actual_inst_count;
+        }
     };
     // Destructor, free allocated memory for underlying queues
     ~Simulation()
@@ -159,21 +168,25 @@ public:
     void RunSimulation();
 
     // Move instructions from IF to ID stage if possible, and fetch new instructions into IF stage if not stalled
-    void ProcessIF(Instruction *(&IF)[2], Instruction *(&ID)[2],InstructionQueue *InstructionQ,bool &stall_fetch, bool &stall_fetch_next);
+    void ProcessIF(Instruction *(&IF)[2], Instruction *(&ID)[2], InstructionQueue *InstructionQ, bool &stall_fetch, bool &stall_fetch_next);
 
     // Move instructions from ID to EX stage if possible, and update stall_fetch_next for the next cycle based on dependences
-    void ProcessID(Instruction* (&ID)[2], Instruction* (&EX)[2], int (&EX_cycles_left)[2], int cycle, int D_depth, unordered_map<uint64_t, uint64_t>& last_done_cycle, bool& stall_fetch_next);
+    void ProcessID(Instruction *(&ID)[2], Instruction *(&EX)[2], int (&EX_cycles_left)[2], int cycle, int D_depth, unordered_map<uint64_t, uint64_t> &last_done_cycle, bool &stall_fetch_next);
 
     // Move instructions from EX to MEM stage if possible, and update EX_cycles_left and MEM_cycles_left for the next cycle based on D and instruction type
-    void ProcessEX(Instruction* (&EX)[2], Instruction* (&MEM)[2], int (&EX_cycles_left)[2], int (&MEM_cycles_left)[2], int cycle, int D_depth, unordered_map<uint64_t, uint64_t>& last_done_cycle);
+    void ProcessEX(Instruction *(&EX)[2], Instruction *(&MEM)[2], int (&EX_cycles_left)[2], int (&MEM_cycles_left)[2], int cycle, int D_depth, unordered_map<uint64_t, uint64_t> &last_done_cycle);
 
     // Move instructions from MEM to WB stage if possible
-    void ProcessMEM(Instruction* (&MEM)[2], Instruction* (&WB)[2], int (&MEM_cycles_left)[2], unordered_map<uint64_t, uint64_t>& last_done_cycle, int cycle);
+    void ProcessMEM(Instruction *(&MEM)[2], Instruction *(&WB)[2], int (&MEM_cycles_left)[2], unordered_map<uint64_t, uint64_t> &last_done_cycle, int cycle);
 
     // Move instructions from WB to Done stage, and update retired_inst and histogram counts for the next cycle
-    void ProcessWB(Instruction* (&WB)[2], int& retired_inst, int (&histogram)[5]);
+    void ProcessWB(Instruction *(&WB)[2], int &retired_inst, int (&histogram)[5]);
 
 private:
+    // Keep partially-filled pipeline stages left-aligned so slot 0 is always used first.
+    void CompactStage(Instruction *(&stage)[2]);
+    void CompactStageWithCycles(Instruction *(&stage)[2], int (&cycles_left)[2]);
+
     // Underlying queues
     InstructionQueue *InstructionQ;
 
