@@ -38,5 +38,11 @@
 - Enforced in-order MEM retirement.
 - Added more comments (especially to explain the hazard checks).
 
+# 4/11 update
+
+- Refactored pipeline stages into helper functions (ProcessIF/ID/EX/MEM/WB).
+- Fixed PRIu64 printf formatting in InstructionQueue debug output.
+- Added missing <fstream> include.
+
 
 
