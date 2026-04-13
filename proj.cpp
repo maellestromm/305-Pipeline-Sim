@@ -434,6 +434,8 @@ void Simulation::ProcessWB(Instruction *(&WB)[2], int &retired_inst, int (&histo
 		{
 			retired_inst++;
 			histogram[WB[i]->type]++;
+
+			delete WB[i];
 			WB[i] = nullptr;
 		}
 	}
@@ -505,6 +507,30 @@ void Simulation::RunSimulation()
 		CompactStage(IF);
 		CompactStage(ID);
 	}
+
+	// Clean up pipeline stage arrays (prevent memory leaks)
+	for (int i = 0; i < 2; i++) {
+        if (IF[i]) {
+            delete IF[i];
+            IF[i] = nullptr;
+        }
+		if (ID[i]) {
+            delete ID[i];
+            ID[i] = nullptr;
+        }
+		if (EX[i]) {
+            delete EX[i];
+            EX[i] = nullptr;
+        }
+		if (MEM[i]) {
+            delete MEM[i];
+            MEM[i] = nullptr;
+        }
+		if (WB[i]) {
+            delete WB[i];
+            WB[i] = nullptr;
+        }
+    }
 
 	/* Print total cycles and execution time in ms */
 
