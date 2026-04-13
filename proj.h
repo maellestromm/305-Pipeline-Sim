@@ -72,15 +72,9 @@ struct Instruction
 class InstructionQueue
 {
 public:
-    /* TODO:
-        Properly implement "initialize a new InstructionQueue by parsing through file"
-    */
     // Constructor, create and return a new InstructionQueue
     InstructionQueue(string filename, int start_inst, int inst_count, int D_depth)
     {
-
-        // ? Initialize any variables tracked in this queue
-
         // Initialize the queue
         InitializeQueue(filename, start_inst, inst_count, D_depth);
     }
@@ -131,8 +125,6 @@ private:
     void InitializeQueue(string filename, int start_inst, int inst_count, int D_depth);
 
     deque<Instruction *> InstructionQ;
-
-    // ?? Any variables tracked in this queue
 };
 
 // Class defining, initializing, and running a Simple Processor Pipeline Simulator

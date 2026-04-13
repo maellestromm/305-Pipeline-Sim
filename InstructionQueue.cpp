@@ -2,9 +2,6 @@
 #include <fstream>
 #include <sstream>
 
-/* TODO:
-    Properly implement "initialize a new InstructionQueue by parsing through file"
-*/
 // Initialize InstructionQueue by parsing through file line by line to create a queue of Instruction objects
 void InstructionQueue::InitializeQueue(string filename, int start_inst, int inst_count, int D_depth)
 {
